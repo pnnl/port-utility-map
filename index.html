@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Seaports & Utility Territories Map</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet Search Control CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.css" />
+  <!-- Leaflet MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { height: 100vh; width: 100%; }
+    #loading, #error {
+      position: absolute; z-index: 1000; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+    #loading { top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255,255,255,0.8); }
+    #error { top: 10px; left: 50%; transform: translateX(-50%); background-color: #ffdddd; color: #d8000c; display: none; }
+    @media (max-width: 768px) {
+      .leaflet-control-zoom, .leaflet-control-layers { font-size: 1.2em; }
+    }
+    .legend { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1); line-height: 1.5; }
+    .legend-item { margin-bottom: 5px; }
+  </style>
+  <!-- Include Pako library for decompressing gzip files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+</head>
+<body>
+  <div id="loading">Loading map data...</div>
+  <div id="error"></div>
+  <div id="map"></div>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Search Control JS -->
+  <script src="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.js"></script>
+  <!-- Leaflet MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  
+  <script>
+    // Initialize the map centered over the US.
+    var map = L.map('map', { preferCanvas: true, zoomControl: false })
+               .setView([39.8283, -98.5795], 4);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Utility territories styling.
+    var pastelColors = ["#A8E6CF", "#DCEDC1", "#FFD3B6", "#FFAAA5", "#FF8B94"];
+    var colorIndex = 0;
+    function getPastelColor() {
+      var color = pastelColors[colorIndex % pastelColors.length];
+      colorIndex++;
+      return color;
+    }
+    function territoryStyle(feature) {
+      if (!feature.properties.color) {
+        feature.properties.color = getPastelColor();
+      }
+      return {
+        fillColor: feature.properties.color,
+        weight: 2,
+        opacity: 1,
+        color: 'white',
+        dashArray: '3',
+        fillOpacity: 0.6
+      };
+    }
+    function onEachTerritory(feature, layer) {
+      var popupContent = "<strong>" + feature.properties.NAME + "</strong><br>" +
+                         "Territory ID: " + feature.properties.OBJECTID + "<br>" +
+                         (feature.properties.portCount ? "Number of ports: " + feature.properties.portCount + "<br>" : "");
+      layer.bindPopup(popupContent);
+      layer.on({
+        mouseover: function(e) {
+          var l = e.target;
+          l.setStyle({ weight: 3, color: '#333', dashArray: '', fillOpacity: 0.8 });
+          if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { l.bringToFront(); }
+          if (info) { info.update(l.feature.properties); }
+        },
+        mouseout: function(e) { filteredUtilityLayer.resetStyle(e.target); if (info) { info.update(); } },
+        click: function(e) { map.fitBounds(e.target.getBounds()); }
+      });
+    }
+    
+    // Global variables.
+    var utilityData, preprocessedData;
+    var markers = L.markerClusterGroup();
+    var filteredUtilityLayer, allUtilitiesLayer;
+    var searchablePorts = [];
+    
+    var info = L.control({position: 'bottomright'});
+    info.onAdd = function(map) {
+      this._div = L.DomUtil.create('div', 'legend');
+      this.update();
+      return this._div;
+    };
+    info.update = function(props) {
+      this._div.innerHTML = '<h4>Utility Territory Info</h4>' +
+        (props ? '<b>' + props.NAME + '</b><br />' + (props.portCount ? props.portCount + ' ports' : 'No ports')
+               : 'Hover over a territory');
+    };
+
+    function showError(message) {
+      var errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      setTimeout(() => { errorDiv.style.display = 'none'; }, 10000);
+    }
+    
+    // Load the pre-processed, gzip-compressed JSON data.
+    function loadPreprocessedData() {
+      return fetch('preprocessed_data.minified.json.gz')
+        .then(response => {
+          if (!response.ok) { throw new Error('Network response was not ok'); }
+          return response.arrayBuffer();
+        })
+        .then(buffer => {
+          // Decompress using pako.
+          const decompressed = pako.ungzip(new Uint8Array(buffer), { to: 'string' });
+          preprocessedData = JSON.parse(decompressed);
+        })
+        .catch(error => {
+          showError('Failed to load preprocessed data: ' + error.message);
+          console.error(error);
+          preprocessedData = { utilities: { features: [] }, ports: [] };
+        });
+    }
+    
+    function processData() {
+      document.getElementById('loading').style.display = 'none';
+      
+      // Extract utilities and ports from preprocessedData.
+      utilityData = preprocessedData.utilities;
+      var portsData = preprocessedData.ports;
+      
+      // Create layers for utility territories.
+      var filteredFeatures = utilityData.features.filter(f => f.properties.hasPort);
+      allUtilitiesLayer = L.geoJson(utilityData, { style: territoryStyle, onEachFeature: onEachTerritory });
+      filteredUtilityLayer = L.geoJson({ type: "FeatureCollection", features: filteredFeatures },
+                                        { style: territoryStyle, onEachFeature: onEachTerritory }).addTo(map);
+      
+      // Add port markers.
+      portsData.forEach(function(port) {
+        var lat = port.latitude, lng = port.longitude;
+        var portName = port.name || "Unnamed Port";
+        var marker = L.marker([lat, lng], { title: portName });
+        var popupContent = "<strong>" + portName + "</strong><br>";
+        if (port.assigned_utilities && port.assigned_utilities.length) {
+          popupContent += "Utility Territories:<ul style='margin: 5px 0 5px 20px; padding: 0;'>";
+          port.assigned_utilities.forEach(function(utility) {
+            popupContent += "<li>" + utility + "</li>";
+          });
+          popupContent += "</ul>";
+        } else {
+          popupContent += "No overlapping utility territories";
+        }
+        marker.bindPopup(popupContent);
+        markers.addLayer(marker);
+        searchablePorts.push({ loc: [lat, lng], title: portName });
+      });
+      
+      map.addLayer(markers);
+      L.control.layers(null, {
+        "Territories with Ports": filteredUtilityLayer,
+        "All Utility Territories": allUtilitiesLayer,
+        "Seaports": markers
+      }, { position: 'topright' }).addTo(map);
+      
+      info.addTo(map);
+      var searchControl = new L.Control.Search({
+        layer: markers,
+        propertyName: 'title',
+        marker: false,
+        moveToLocation: function(latlng, title, map) { map.setView(latlng, 9); },
+        collapsed: true,
+        textPlaceholder: 'Search for a port...'
+      });
+      map.addControl(searchControl);
+      
+      var legend = L.control({position: 'bottomleft'});
+      legend.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'legend');
+        div.innerHTML = '<h4>Legend</h4>' +
+                        '<div class="legend-item" style="margin-top: 10px;">' +
+                        '<img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" width="12" height="20"> Seaport' +
+                        '</div>';
+        return div;
+      };
+      legend.addTo(map);
+    }
+    
+    // Load and process the pre-processed data.
+    loadPreprocessedData().then(processData)
+      .catch(error => {
+        document.getElementById('loading').style.display = 'none';
+        showError('Failed to load map data: ' + error.message);
+        console.error(error);
+      });
+  </script>
+</body>
+</html>
