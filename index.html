@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Seaports & Utility Territories Map</title>
+  <title>Seaports and Electric Utility Territories Map</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Leaflet CSS -->
@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <style>
-    body { margin: 0; padding: 0; }
+    body { margin: 0; padding: 0; } 
     #map { height: 100vh; width: 100%; }
     #loading, #error {
       position: absolute; z-index: 1000; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);
@@ -150,7 +150,7 @@
         var lat = port.latitude, lng = port.longitude;
         var portName = port.name || "Unnamed Port";
         var marker = L.marker([lat, lng], { title: portName });
-        var popupContent = "<strong>" + portName + "</strong><br>";
+        var popupContent = "<strong>" + "Port of " + portName + "</strong><br>";
         if (port.assigned_utilities && port.assigned_utilities.length) {
           popupContent += "Utility Territories:<ul style='margin: 5px 0 5px 20px; padding: 0;'>";
           port.assigned_utilities.forEach(function(utility) {
