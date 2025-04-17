@@ -107,7 +107,12 @@ outage_fips_10per <- outage_fips %>%
   filter(!is.na(number_events)) %>%
   filter(is_extreme)
 
+#----Output files ----
+st_write(outage_fips_10per, "grid_outages_10per_with_fips.geojson", driver = "GeoJSON")
 
+# Compress the GeoJSON file using gz compression
+library(R.utils)
+gzip("grid_outages_10per_with_fips.geojson", destname = "grid_outages_10per_with_fips.geojson.gz")
 
 
 ggplot(outage_fips_10per) +
@@ -115,10 +120,6 @@ ggplot(outage_fips_10per) +
   scale_fill_viridis_c() + 
   theme_minimal() +
   ggtitle("Utility Outages by FIPS")
-
- 
-st_write(outage_fips_10per, "grid_outages_10per_with_fips.geojson", driver = "GeoJSON")
-
 
 ### Load and Process Modeled County Customer Data
 
