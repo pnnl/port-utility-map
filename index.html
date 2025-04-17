@@ -52,7 +52,13 @@
     }).addTo(map);
 
     // Utility territories styling.
-    var pastelColors = ["#A8E6CF", "#DCEDC1", "#FFD3B6", "#FFAAA5", "#FF8B94"];
+    var pastelColors = [
+  "#f7fcf5",
+  "#e5f5e0",
+  "#c7e9c0",
+  "#a1d99b",
+  "#74c476"
+];
     var colorIndex = 0;
     function getPastelColor() {
       var color = pastelColors[colorIndex % pastelColors.length];
@@ -207,7 +213,7 @@
         var label = L.DomUtil.create('label', '', container);
         label.style.display = 'block';
         label.style.marginBottom = '4px';
-        label.innerHTML = 'Show top <span id="sliderPct">25%</span> of counties based on total electrical outages';
+        label.innerHTML = 'Show top <span id="sliderPct">25%</span> counties based on electric grid outages 2019-2023';
 
         // input
         var input = L.DomUtil.create('input', '', container);
