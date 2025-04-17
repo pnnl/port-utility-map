@@ -169,6 +169,13 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
                 onEachFeature: onEachOutageFeature
             }).addTo(map);
 
+            // Ensure all layers are initialized before performing operations
+        outageLayer.on('add', function() {
+            // Now it's safe to manipulate zIndex or other properties
+            outageLayer.setZIndex(10);  // Example of setting zIndex after layer is added
+        });
+
+
     })
     .catch(error => {
         console.error('Error loading outages GeoJSON:', error);
@@ -231,10 +238,10 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
       
       map.addLayer(markers);
       L.control.layers(null, {
-        "Territories with Ports": filteredUtilityLayer,
-        "All Utility Territories": allUtilitiesLayer,
-        "Seaports": markers,
-        "Grid Outages": outageLayer
+        "Electric Utility Territories with Ports": filteredUtilityLayer,
+        "All Electric Utility Territories": allUtilitiesLayer,
+        "Seaport Markers": markers,
+        "Grid Outages by County": outageLayer
       }, { position: 'topright' }).addTo(map);
       
       info.addTo(map);
