@@ -45,9 +45,10 @@
     var map = L.map('map', { preferCanvas: true, zoomControl: false })
                .setView([39.8283, -98.5795], 4);
     L.control.zoom({ position: 'topright' }).addTo(map);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+	attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+	subdomains: 'abcd',
+	maxZoom: 20
     }).addTo(map);
 
     // Utility territories styling.
@@ -71,6 +72,44 @@
         fillOpacity: 0.6
       };
     }
+
+    // Grid outage styling
+    function outageStyle(feature) {
+      return {
+        color: feature.properties.is_extreme ? 'red' : 'blue', // Use different colors for extreme vs non-extreme outages
+        weight: 2,
+        opacity: 0.6,
+        fillOpacity: 0.4
+      };
+    }
+
+    // Add highlight effect on click
+    function highlightFeature(e) {
+      var layer = e.target;
+      layer.setStyle({
+        weight: 4,
+        color: '#666',
+        dashArray: '',
+        fillOpacity: 0.7
+      });
+    }
+
+    function resetHighlight(e) {
+      outageLayer.resetStyle(e.target);
+    }
+
+    // Handle click and bind popup
+    function onEachOutageFeature(feature, layer) {
+      layer.on({
+        click: function (e) {
+          highlightFeature(e);  // Highlight the clicked polygon
+          layer.bindPopup("Outage data: " + feature.properties.NAME);
+          map.fitBounds(e.target.getBounds());  // Zoom into clicked polygon
+        },
+        mouseout: resetHighlight,
+      });
+    }
+
     function onEachTerritory(feature, layer) {
       var popupContent = "<strong>" + feature.properties.NAME + "</strong><br>" +
                          "Territory ID: " + feature.properties.OBJECTID + "<br>" +
@@ -93,6 +132,7 @@
     var markers = L.markerClusterGroup();
     var filteredUtilityLayer, allUtilitiesLayer;
     var searchablePorts = [];
+    var outageLayer;
     
     var info = L.control({position: 'bottomright'});
     info.onAdd = function(map) {
@@ -114,7 +154,7 @@
     }
     
 // Load the gzipped GeoJSON data for electrical grid outages
-fetch('grid_outages_10per_with_fips.geojson.gz')
+fetch('grid_outages_clean_with_fips.geojson.gz')
     .then(response => response.arrayBuffer())
     .then(buffer => {
         // Decompress the data using pako
@@ -123,22 +163,12 @@ fetch('grid_outages_10per_with_fips.geojson.gz')
         // Parse the decompressed GeoJSON
         const geoJsonData = JSON.parse(decompressed);
 
-        // Create a layer for the outage data
-        var outageLayer = L.geoJSON(geoJsonData, {
-            style: function (feature) {
-                return {
-                    color: 'red',
-                    weight: 2,
-                    opacity: 0.6,
-                    fillOpacity: 0.8
-                };
-            },
-            onEachFeature: function (feature, layer) {
-                var popupContent = "County: " + "<strong>" + feature.properties.NAME + "</strong><br>" +
-                                   "Percent Rank: " + feature.properties.pct_rank;
-                layer.bindPopup(popupContent);
-            }
-        }).addTo(map);
+        // Create the outage layer
+        outageLayer = L.geoJSON(geoJsonData, {
+                style: outageStyle,
+                onEachFeature: onEachOutageFeature
+            }).addTo(map);
+
     })
     .catch(error => {
         console.error('Error loading outages GeoJSON:', error);
@@ -203,7 +233,8 @@ fetch('grid_outages_10per_with_fips.geojson.gz')
       L.control.layers(null, {
         "Territories with Ports": filteredUtilityLayer,
         "All Utility Territories": allUtilitiesLayer,
-        "Seaports": markers
+        "Seaports": markers,
+        "Grid Outages": outageLayer
       }, { position: 'topright' }).addTo(map);
       
       info.addTo(map);
