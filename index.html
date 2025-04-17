@@ -74,14 +74,19 @@
     }
 
     // Grid outage styling
+    // Grid outage styling by pct_rank
     function outageStyle(feature) {
+      var pct = feature.properties.pct_rank;
+      var col = getOutageColor(pct);
       return {
-        color: feature.properties.is_extreme ? 'red' : 'blue', // Use different colors for extreme vs non-extreme outages
-        weight: 2,
+        fillColor: col,
+        color: col,
+        weight: 1,
         opacity: 0.6,
         fillOpacity: 0.4
       };
     }
+
 
     // Add highlight effect on click
     function highlightFeature(e) {
@@ -153,6 +158,81 @@
       setTimeout(() => { errorDiv.style.display = 'none'; }, 10000);
     }
     
+
+    // 1. Yellow→red color scale for pct_rank ∈ [0,1]:
+    function getOutageColor(pct) {
+      return pct > 0.8 ? '#800026' :
+             pct > 0.6 ? '#BD0026' :
+             pct > 0.4 ? '#E31A1C' :
+             pct > 0.2 ? '#FC4E2A' :
+                         '#FFEDA0';
+    }
+
+    // 2. Show only those features ≥ minPct, hide the rest:
+    function updateOutageStyles(minPct) {
+      outageLayer.eachLayer(function(layer) {
+        var rank = layer.feature.properties.pct_rank;
+        if (rank >= minPct) {
+          var col = getOutageColor(rank);
+          layer.setStyle({
+            fillColor: col,
+            color: col,
+            weight: 2,
+            opacity: 0.6,
+            fillOpacity: 0.4,
+            interactive: true
+          });
+        } else {
+          // completely hide
+          layer.setStyle({
+            fillOpacity: 0,
+            opacity: 0,
+            interactive: false
+          });
+        }
+      });
+    }
+
+    // 3. Build a Leaflet control (slider) in the top-left:
+    function createPctSlider() {
+      var sliderControl = L.control({ position: 'topleft' });
+      sliderControl.onAdd = function(map) {
+        var container = L.DomUtil.create('div', 'legend');
+        // Prevent clicks on the slider from panning the map
+        L.DomEvent.disableClickPropagation(container);
+
+
+
+        // label
+        var label = L.DomUtil.create('label', '', container);
+        label.style.display = 'block';
+        label.style.marginBottom = '4px';
+        label.innerHTML = 'Show top <span id="sliderPct">25%</span> of counties based on total electrical outages';
+
+        // input
+        var input = L.DomUtil.create('input', '', container);
+        input.type = 'range';
+        input.min = 0;
+        input.max = 1;
+        input.step = 0.01;
+        input.value = .75;
+        input.style.width = '180px';
+
+        input.oninput = function() {
+      var v = parseFloat(this.value);
+      // inverse for label:
+      document.getElementById('sliderPct').textContent = ((1 - v)*100).toFixed(0) + '%';
+      updateOutageStyles(v);
+    };
+
+
+        return container;
+      };
+      sliderControl.addTo(map);
+    }
+    // ───────────────────────────────────────────────────────────
+
+    
 // Load the gzipped GeoJSON data for electrical grid outages
 fetch('grid_outages_clean_with_fips.geojson.gz')
     .then(response => response.arrayBuffer())
@@ -168,6 +248,19 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
                 style: outageStyle,
                 onEachFeature: onEachOutageFeature
             }).addTo(map);
+
+            // now build the JS slider & apply initial styling:
+        createPctSlider();
+        updateOutageStyles(.75);
+
+            // Ensure all layers are initialized before performing operations
+        outageLayer.on('add', function() {
+            // Now it's safe to manipulate zIndex or other properties
+            outageLayer.setZIndex(10);  // Example of setting zIndex after layer is added
+        });
+
+
+
 
     })
     .catch(error => {
@@ -231,10 +324,10 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
       
       map.addLayer(markers);
       L.control.layers(null, {
-        "Territories with Ports": filteredUtilityLayer,
-        "All Utility Territories": allUtilitiesLayer,
-        "Seaports": markers,
-        "Grid Outages": outageLayer
+        "Electric Utility Territories with Ports": filteredUtilityLayer,
+        "All Electric Utility Territories": allUtilitiesLayer,
+        "Seaport Markers": markers,
+        "Grid Outages by County": outageLayer
       }, { position: 'topright' }).addTo(map);
       
       info.addTo(map);
