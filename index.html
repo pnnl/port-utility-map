@@ -204,7 +204,8 @@
         var label = L.DomUtil.create('label', '', container);
         label.style.display = 'block';
         label.style.marginBottom = '4px';
-        label.innerHTML = 'Show top <span id="sliderPct">25%</span> counties based on electric grid outages 2019-2023';
+        label.innerHTML = 'Show top <span id="sliderPct">25%</span> counties based on number<br>' +
+        'of electric grid outages from 2019-2023';
 
         // input
         var input = L.DomUtil.create('input', '', container);
@@ -359,7 +360,7 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
     '<div class="legend-item">' +
       '<span style="display:inline-block; width:12px; height:12px; ' +
                    'background:red; margin-right:6px; vertical-align:middle;"></span>' +
-      ' County with Outage Data' +
+      ' County with Electric Grid Outage Events' +
     '</div>';
   return div;
 };
