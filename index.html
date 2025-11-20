@@ -51,6 +51,10 @@
 	maxZoom: 20
     }).addTo(map);
 
+    // Shared canvas renderer for heavy polygon layers
+  var polygonRenderer = L.canvas({ padding: 0.5 });
+
+
     // Utility territories styling.
     var pastelColors = [
   "#f7fcf5",
@@ -124,27 +128,35 @@
 
     function onEachTerritory(feature, layer) {
       var popupContent = "<strong>" + feature.properties.NAME + "</strong><br>" +
-                         "Territory ID: " + feature.properties.OBJECTID + "<br>" +
-                         (feature.properties.portCount ? "Number of ports: " + feature.properties.portCount + "<br>" : "");
+                        "Territory ID: " + feature.properties.OBJECTID + "<br>" +
+                        (feature.properties.portCount ? "Number of ports: " + feature.properties.portCount + "<br>" : "");
+
+      // Click popup with full details
       layer.bindPopup(popupContent);
-      layer.on({
-        mouseover: function(e) {
-          var l = e.target;
-          l.setStyle({ weight: 3, color: '#333', dashArray: '', fillOpacity: 0.8 });
-          if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { l.bringToFront(); }
-          if (info) { info.update(l.feature.properties); }
-        },
-        mouseout: function(e) { filteredUtilityLayer.resetStyle(e.target); if (info) { info.update(); } },
-        click: function(e) { map.fitBounds(e.target.getBounds()); }
+
+      // Lightweight hover tooltip (just the territory name)
+      if (feature.properties && feature.properties.NAME) {
+        layer.bindTooltip(feature.properties.NAME, {
+          sticky: true,        // follows the cursor a bit
+          direction: 'auto'    // let Leaflet choose best side
+        });
+      }
+
+      // Click zooms to territory
+      layer.on('click', function (e) {
+        map.fitBounds(e.target.getBounds());
       });
     }
+
+
     
     // Global variables.
     var utilityData, preprocessedData;
     var markers = L.markerClusterGroup();
-    var filteredUtilityLayer, allUtilitiesLayer;
+    var filteredUtilityLayer; // removed allUtilitiesLayer for now
     var searchablePorts = [];
     var outageLayer;
+
     
     var info = L.control({position: 'bottomright'});
     info.onAdd = function(map) {
@@ -152,11 +164,13 @@
       this.update();
       return this._div;
     };
-    info.update = function(props) {
-      this._div.innerHTML = '<h4>Utility Territory Info</h4>' +
-        (props ? '<b>' + props.NAME + '</b><br />' + (props.portCount ? props.portCount + ' ports' : 'No ports')
-               : 'Hover over a territory');
+    info.update = function() {
+      this._div.innerHTML =
+        '<h4>Utility Territory Info</h4>' +
+        'Utility territories shown are those that overlap seaports. ' +
+        'Click a territory polygon to zoom and see details in its popup.';
     };
+
 
     function showError(message) {
       var errorDiv = document.getElementById('error');
@@ -243,18 +257,18 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
         // Parse the decompressed GeoJSON
         const geoJsonData = JSON.parse(decompressed);
 
-        // Create the outage layer
+        /// Create the outage layer using canvas renderer
         outageLayer = L.geoJSON(geoJsonData, {
-                style: outageStyle,
-                onEachFeature: onEachOutageFeature
-            }).addTo(map);
+            style: outageStyle,
+            onEachFeature: onEachOutageFeature,
+            renderer: polygonRenderer
+        }).addTo(map);
 
-        // Bring outage polygons above other overlays
-        outageLayer.bringToFront();
 
-            // now build the JS slider & apply initial styling:
+        // now build the JS slider & apply initial styling:
         createPctSlider();
         updateOutageStyles(.75);
+
 
 
 
@@ -295,11 +309,19 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
       utilityData = preprocessedData.utilities;
       var portsData = preprocessedData.ports;
       
-      // Create layers for utility territories.
+      // Create layer only for utility territories that have ports.
       var filteredFeatures = utilityData.features.filter(f => f.properties.hasPort);
-      allUtilitiesLayer = L.geoJson(utilityData, { style: territoryStyle, onEachFeature: onEachTerritory });
-      filteredUtilityLayer = L.geoJson({ type: "FeatureCollection", features: filteredFeatures },
-                                        { style: territoryStyle, onEachFeature: onEachTerritory }).addTo(map);
+
+      filteredUtilityLayer = L.geoJson(
+        { type: "FeatureCollection", features: filteredFeatures },
+        {
+          style: territoryStyle,
+          onEachFeature: onEachTerritory,
+          renderer: polygonRenderer // from step (a)
+        }
+      ).addTo(map);
+
+
       
       // Add port markers.
       portsData.forEach(function(port) {
@@ -321,13 +343,12 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
         searchablePorts.push({ loc: [lat, lng], title: portName });
       });
       
-      map.addLayer(markers);
       L.control.layers(null, {
-        "Electric Utility Territories with Ports": filteredUtilityLayer,
-        "All Electric Utility Territories": allUtilitiesLayer,
-        "Seaport Markers": markers,
-        "Grid Outages by County": outageLayer
-      }, { position: 'topright' }).addTo(map);
+      "Electric Utility Territories with Ports": filteredUtilityLayer,
+      "Seaport Markers": markers,
+      "Grid Outages by County": outageLayer
+    }, { position: 'topright' }).addTo(map);
+
       
       info.addTo(map);
       var searchControl = new L.Control.Search({
