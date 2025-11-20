@@ -106,6 +106,7 @@
     }
 
     function resetHighlight(e) {
+      if (!outageLayer) return;
       outageLayer.resetStyle(e.target);
     }
 
@@ -168,6 +169,7 @@
 
     // 2. Show only those features ≥ minPct, hide the rest:
     function updateOutageStyles(minPct) {
+      if (!outageLayer) return;
       outageLayer.eachLayer(function(layer) {
         var rank = layer.feature.properties.pct_rank;
         if (rank >= minPct) {
@@ -247,15 +249,14 @@ fetch('grid_outages_clean_with_fips.geojson.gz')
                 onEachFeature: onEachOutageFeature
             }).addTo(map);
 
+        // Bring outage polygons above other overlays
+        outageLayer.bringToFront();
+
             // now build the JS slider & apply initial styling:
         createPctSlider();
         updateOutageStyles(.75);
 
-            // Ensure all layers are initialized before performing operations
-        outageLayer.on('add', function() {
-            // Now it's safe to manipulate zIndex or other properties
-            outageLayer.setZIndex(10);  // Example of setting zIndex after layer is added
-        });
+
 
 
 
